@@ -29,7 +29,7 @@
 #define hLng  18.8591456
 
 #define SIGFOX_FRAME_LENGTH 12
-#define INTERVAL 600
+#define INTERVAL 6000
 #define DEBUG 0
 
 double latitude = 0;
@@ -39,6 +39,10 @@ unsigned long previousSendTime = 0;
 struct data {
   long gps;
   float temperature;
+  byte humidity;
+  byte btn1;
+  byte btn2;
+  byte stats;
 };    
     
 void setup() {
@@ -48,6 +52,7 @@ void setup() {
     SigFox.begin(19200);
     initSigfox();
     setStepUp(HIGH);
+    
 }
 
 
@@ -151,16 +156,25 @@ unsigned long recalc() {
 
 
 void loop() {
-    // if (smeGps.ready()) {
+    byte btn1=0;
+    byte btn2=0;
+    byte stats;
+     if (smeGps.ready()) {
+        stats=1;
         ledGreenLight(58);
-        //latitude   = smeGps.getLatitude();
-        // longitude  = smeGps.getLongitude();
-        latitude = 50.1402078;
-        longitude = 14.5077375;
+        latitude   = smeGps.getLatitude();
+        longitude  = smeGps.getLongitude();
+        }
+        
         if (previousSendTime == 0)
         {     data frame;
               frame.gps = recalc();
-              frame.temperature = smeHumidity.readTemperature();            
+              frame.temperature = smeHumidity.readTemperature();
+              frame.humidity = smeHumidity.readHumidity();            
+              frame.btn1=btn1;
+              frame.btn2=btn2;
+              frame.stats=stats;
+              
               bool answer = sendSigfox(&frame, sizeof(data));
                 if (answer) {
                     ledBlueLight(HIGH);
@@ -174,16 +188,28 @@ void loop() {
               delay(2000);
               ledBlueLight(LOW);
               ledRedLight(LOW);
+              btn1=0;
+              btn2=0;
         }
 
         else {
               previousSendTime=previousSendTime-1;
-              delay(1000);
+                if (isButtonOnePressed()) {
+                  ++btn1;
+                  ledRedLight(HIGH);
+                  delay(1000);
+                  }
+
+                if (isButtonTwoPressed()) {
+                  ++btn2;
+                  ledGreenLight(HIGH);
+                  delay(1000);
+                }
+              delay(100);
+              ledRedLight(LOW);
+              ledGreenLight(LOW);
         }
 
         
-      //}
-
-    //else ledGreenLight(LOW);
-
+      
 }
