@@ -18,9 +18,10 @@
 
 
 #include <Wire.h>
-#include <sl868a.h>
 #include <Arduino.h>
 #include <HTS221.h>
+#include "TinyGPS.h"
+
 #define dLat  0.000076409
 #define dLng  0.00005164
 #define lLat  48.5519972
@@ -32,27 +33,37 @@
 #define INTERVAL 6000
 #define DEBUG 0
 
-double latitude = 0;
-double longitude = 0;
+float latitude=0.0f;
+float longitude=0.0f;
 unsigned long previousSendTime = 0;
+unsigned long age;
+
+byte btn1=0;
+byte btn2=0;
+byte stats=0;
 
 struct data {
   long gps;
-  float temperature;
+/*  float temperature;
   byte humidity;
   byte btn1;
   byte btn2;
-  byte stats;
+  byte stats;*/
+  float lat=0;
+  float lng=0;
 };    
+
+
+TinyGPS gps;
     
 void setup() {
     SerialUSB.begin(115200);
-    smeGps.begin();
+    GPS.begin(9600);
     smeHumidity.begin();
     SigFox.begin(19200);
     initSigfox();
     setStepUp(HIGH);
-    
+ 
 }
 
 
@@ -134,11 +145,29 @@ unsigned long recalc() {
     unsigned int    ctvLat;
     unsigned int    ctvLng;
     unsigned long out;
-    if (inRange(latitude) and inRange(longitude))
-    { difLat=latitude-lLat;
+
+   for (unsigned long start = millis(); millis() - start < 1000;)
+  {
+    while (GPS.available())
+    {
+      char c = GPS.read();
+      if (gps.encode(c)); // Did a new valid sentence come in?
+    }
+  }
+     
+     unsigned long age;
+     gps.f_get_position(&latitude, &longitude, &age);
+
+// latitude   = smeGps.getLatitude();
+// longitude  = smeGps.getLongitude();
+
+    // if (inRange(latitude) and inRange(longitude))
+      difLat=latitude-lLat;
       difLng=longitude-lLng;
       ctvLat=floor(difLat/dLat);
       ctvLng=floor(difLng/dLng);
+      SerialUSB.println(latitude);
+      SerialUSB.println(longitude);
       SerialUSB.println(ctvLat);
       SerialUSB.println(ctvLat,BIN);
       SerialUSB.println(ctvLng);
@@ -146,35 +175,70 @@ unsigned long recalc() {
   
       out = ctvLat << 17;
       out = out + ctvLng;
-        SerialUSB.println(out,BIN);        
+       SerialUSB.println(out,BIN);        
       return out;
       
+/*    }
+    else
+    {
+     SerialUSB.println("Mimo rozsah");
+     SerialUSB.println(latitude);
+     SerialUSB.println(longitude);
     }
-
+    */
 
 }
 
 
 void loop() {
-    byte btn1=0;
-    byte btn2=0;
-    byte stats;
-     if (smeGps.ready()) {
-        stats=1;
-        ledGreenLight(58);
-        latitude   = smeGps.getLatitude();
-        longitude  = smeGps.getLongitude();
-        }
+          
+     /* if ((GPS.available()) && ((previousSendTime % 100)==0))
+        {
+           for (unsigned long start = millis(); millis() - start < 1000;)
+          {
+            char c = GPS.read();
+            if (gps.encode(c)); // Did a new valid sentence come in?
         
-        if (previousSendTime == 0)
-        {     data frame;
+          }
+        
+              
+              gps.f_get_position(&latitude, &longitude, &age);
+*/
+//              latitude   = smeGps.getLatitude();
+//              longitude  = smeGps.getLongitude();
+//              stats = smeGps.getLockedSatellites();
+        ledGreenLight(58);
+  
+
+      if (previousSendTime == 0)
+        {     
+
+
+              
+              data frame;
               frame.gps = recalc();
-              frame.temperature = smeHumidity.readTemperature();
+              /*frame.temperature = smeHumidity.readTemperature();
               frame.humidity = smeHumidity.readHumidity();            
               frame.btn1=btn1;
               frame.btn2=btn2;
-              frame.stats=stats;
+              frame.stats=stats;*/
+              frame.lat = latitude;
+              frame.lng = longitude;
+
+              SerialUSB.print("lat:");
+              SerialUSB.println(latitude,6);
+              SerialUSB.print("lng:");
+              SerialUSB.println(longitude,6);
+              SerialUSB.print("locked:");
+              SerialUSB.println(stats);
               
+              /* SerialUSB.print("GPS:");
+              SerialUSB.println(frame.gps);
+              SerialUSB.print("btn1:");
+              SerialUSB.println(frame.btn1);
+              SerialUSB.print("btn2:");
+              SerialUSB.println(frame.btn2);
+              */
               bool answer = sendSigfox(&frame, sizeof(data));
                 if (answer) {
                     ledBlueLight(HIGH);
@@ -183,8 +247,9 @@ void loop() {
                     ledBlueLight(LOW);
                     ledRedLight(HIGH);
                   }
-                  
+              
               previousSendTime=INTERVAL;
+              setStepUp(LOW);
               delay(2000);
               ledBlueLight(LOW);
               ledRedLight(LOW);
@@ -195,13 +260,13 @@ void loop() {
         else {
               previousSendTime=previousSendTime-1;
                 if (isButtonOnePressed()) {
-                  ++btn1;
+                  btn1=++btn1;
                   ledRedLight(HIGH);
                   delay(1000);
                   }
 
                 if (isButtonTwoPressed()) {
-                  ++btn2;
+                  btn2=++btn2;
                   ledGreenLight(HIGH);
                   delay(1000);
                 }
@@ -210,6 +275,6 @@ void loop() {
               ledGreenLight(LOW);
         }
 
-        
+         if (previousSendTime==500) setStepUp(HIGH);
       
 }
